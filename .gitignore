@@ -1,0 +1,4 @@
+# Log files
+*.log
+setup.log
+setup_errors.log
