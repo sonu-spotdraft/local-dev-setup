@@ -1,106 +1,94 @@
 # Local Development Setup
 
-This guide helps you set up your local development environment for the project. The setup script (`be-setup.sh`) handles most of the configuration automatically.
+## Prerequisites
+
+Before running the setup script:
+
+1. Clone the Django REST API repository
+2. Navigate to the repository root directory
+
+```bash
+cd /path/to/django-rest-api
+```
 
 ## Quick Start
 
-1. Clone the repository
-2. Make the setup script executable:
+### 1. Run the setup script
+
+From the repository root directory, run:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://github.com/sonu-spotdraft/local-dev-setup/blob/main/be-setup.sh)"
+```
+
+The script will create a `.env` file with local development configuration:
+
+```bash
+CACHE_BACKEND=django_redis.cache.RedisCache
+CACHE_LOCATION=redis://127.0.0.1:6379/1
+DEBUG=True
+CLUSTER_URL=http://localhost:8000/
+CELERY_BROKER_URL=redis://127.0.0.1:6379/0
+AWS_ACCESS_KEY_ID=fake
+AWS_SECRET_ACCESS_KEY=fake%
+```
+
+### 2. Set up environment variables
+
+Add these to your `.zshrc` or `.bashrc` if not already present:
+
+```bash
+# Homebrew
+eval "$(/usr/local/bin/brew shellenv)"
+alias ibrew="arch -x86_64 /usr/local/bin/brew"
+
+# Python
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init --path)"
+eval "$(pyenv init -)"
+alias ipyenv="arch -x86_64 pyenv"
+alias ipython="arch -x86_64 python"  # Alias for running Python in Intel mode
+
+# OpenSSL
+export PATH="/usr/local/opt/openssl@3.0/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/openssl@3.0/lib -L/usr/local/opt/libxml2/lib -L/usr/local/opt/libxslt/lib -L/usr/local/Cellar/libxmlsec1/1.2.37/lib -L/usr/local/opt/zlib/lib"
+export CPPFLAGS="-I/usr/local/opt/libxml2/include -I/usr/local/opt/libxslt/include -I/usr/local/opt/zlib/include -I/usr/local/opt/openssl@3.0/include"
+
+# XML
+export PKG_CONFIG_PATH="/usr/local/opt/libxml2/lib/pkgconfig:/usr/local/opt/libxslt/lib/pkgconfig:/usr/local/opt/openssl@3.0/lib/pkgconfig:/usr/local/Cellar/libxmlsec1/1.2.37/lib/pkgconfig"
+export PATH="/usr/local/opt/libxml2/bin:$PATH"
+
+# Libraries
+export DYLD_LIBRARY_PATH="/usr/local/Cellar/libxmlsec1/1.3.7/lib:$DYLD_LIBRARY_PATH"
+export PATH="/usr/local/Cellar/libxmlsec1/1.3.7/bin:$PATH"
+```
+
+### 3. Django Setup
+
+1. Get the latest database dump from dev-ops and import it:
+
    ```bash
-   chmod +x be-setup.sh
+   psql spotdraft-django-rest-api < path/to/db_dump
    ```
-3. Run the setup script:
+
+2. Run Django setup commands one by one :
+   don't forget to run `source env/bin/activate` if not already activated
    ```bash
-   ./be-setup.sh
+   # Run these commands with arch -x86_64 prefix to ensure Intel compatibility
+   # If you have ipython alias in your .zshrc, you can use ipython instead of arch -x86_64 python
+   ipython manage.py migrate
+   ipython manage.py createsuperuser  # if not already created
+   ipython manage.py runserver
    ```
 
-## For New Developers
+## Notes
 
-1. Install necessary development tools
-2. Set up the database
-3. Configure your environment
-
-### First-time Setup Tips
-
-- The script will create backups of your existing configurations
-- You'll need to press Enter when prompted during PostgreSQL setup
-- If you're on Apple Silicon (M1/M2), the script will handle architecture-specific setup automatically
-
-## For Existing Developers
-
-The setup script has been updated with improved features:
-
-### Recent Improvements
-
-- Improved package installation checks
-- Better PostgreSQL setup handling
-- Architecture-aware installation
-- Enhanced error handling and logging
-
-## Manual Setup (Alternative)
-
-If you prefer to set up manually or the automated script fails:
-
-### 1. Install Homebrew
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### 2. Install Development Tools
-
-```bash
-# Core development tools
-brew install readline sqlite3 xz zlib postgresql poppler pyenv pre-commit
-
-# GUI applications
-brew install --cask ngrok
-```
-
-### 3. Set Up PostgreSQL
-
-```bash
-# Start PostgreSQL service
-brew services start postgresql
-
-# Create PostgreSQL superuser
-createuser -s postgres
-
-# Create database
-createdb spotdraft-django-rest-api
-```
-
-### 4. Set Up Redis
-
-```bash
-brew install redis
-brew services start redis
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **PostgreSQL Connection Issues**
-
-   - Ensure the service is running: `brew services list | grep postgresql`
-   - Check if the postgres user exists: `psql -U postgres -c "SELECT 1"`
-
-2. **Architecture-specific Issues**
-
-   - On Apple Silicon, use `ibrew` for Intel-specific packages
-   - Check your architecture: `arch`
-
-### Logs and Backups
-
-- Setup logs: `setup.log`
-- Error logs: `setup_errors.log`
-- Configuration backups: `~/setup_backup_YYYYMMDD_HHMMSS/`
-
-## Contributing
-
-If you find any issues or have suggestions for improvement:
-
-1. Check the existing issues
-2. Create a new issue with detailed information
-3. Submit a pull request with your changes
+- The `.env` file is required for local development
+- Environment variables need to be added to your shell config file
+- Database dump is required for initial setup
+- All Python commands should be run in Intel architecture mode
+  - Use `ipython` alias for running Python commands in Intel mode
+  - Any command can be run in Intel mode by prefixing it with `arch -x86_64`
+- Always activate virtual environment before running Django commands: `source env/bin/activate`
+- If you encounter architecture-related issues, verify you're using Intel mode with `arch` command
