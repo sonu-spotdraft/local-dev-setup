@@ -18,7 +18,7 @@ cd /path/to/django-rest-api
 From the repository root directory, run:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://github.com/sonu-spotdraft/local-dev-setup/blob/main/be-setup.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/sonu-spotdraft/local-dev-setup/refs/heads/main/be-setup.sh)"
 ```
 
 The script will create a `.env` file with local development configuration:
