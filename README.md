@@ -50,18 +50,11 @@ eval "$(pyenv init -)"
 alias ipyenv="arch -x86_64 pyenv"
 alias ipython="arch -x86_64 python"  # Alias for running Python in Intel mode
 
-# OpenSSL
-export PATH="/usr/local/opt/openssl@3.0/bin:$PATH"
-export LDFLAGS="-L/usr/local/opt/openssl@3.0/lib -L/usr/local/opt/libxml2/lib -L/usr/local/opt/libxslt/lib -L/usr/local/Cellar/libxmlsec1/1.2.37/lib -L/usr/local/opt/zlib/lib"
-export CPPFLAGS="-I/usr/local/opt/libxml2/include -I/usr/local/opt/libxslt/include -I/usr/local/opt/zlib/include -I/usr/local/opt/openssl@3.0/include"
+export LDFLAGS="-L/usr/local/opt/zlib/lib"
+export CPPFLAGS="-I/usr/local/opt/zlib/include"
+export LDFLAGS="-L/usr/local/opt/openssl@3/lib"
+export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
 
-# XML
-export PKG_CONFIG_PATH="/usr/local/opt/libxml2/lib/pkgconfig:/usr/local/opt/libxslt/lib/pkgconfig:/usr/local/opt/openssl@3.0/lib/pkgconfig:/usr/local/Cellar/libxmlsec1/1.2.37/lib/pkgconfig"
-export PATH="/usr/local/opt/libxml2/bin:$PATH"
-
-# Libraries
-export DYLD_LIBRARY_PATH="/usr/local/Cellar/libxmlsec1/1.3.7/lib:$DYLD_LIBRARY_PATH"
-export PATH="/usr/local/Cellar/libxmlsec1/1.3.7/bin:$PATH"
 ```
 
 ### 3. Django Setup
