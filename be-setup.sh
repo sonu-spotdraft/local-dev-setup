@@ -306,4 +306,6 @@ print_message "Installing project dependencies..."
 
 poetry install
 
+create_env_file
+
 print_message "Backend setup completed successfully!"
