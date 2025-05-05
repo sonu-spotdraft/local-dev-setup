@@ -13,6 +13,9 @@ print_error() {
     echo -e "\033[1;31m$1\033[0m"
 }
 
+# Handle Ctrl+C
+trap 'print_error "\nScript interrupted by user. Exiting..."; exit 1' INT
+
 # Check if running on macOS
 if [[ "$(uname -m)" != "x86_64" ]]; then
     print_error "This script is designed for Intel only"
