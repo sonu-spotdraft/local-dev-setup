@@ -252,6 +252,25 @@ remove_poetry() {
     print_message "Poetry removal completed"
 }
 
+create_env_file() {
+    if [ -f .env ]; then
+        echo "📝 .env file already exists, skipping creation..."
+        return
+    fi
+    
+    echo "📝 Creating .env file..."
+    cat > .env << 'EOF'
+CACHE_BACKEND=django_redis.cache.RedisCache
+CACHE_LOCATION=redis://127.0.0.1:6379/1
+DEBUG=True
+CLUSTER_URL=http://localhost:8001/
+CELERY_BROKER_URL=redis://127.0.0.1:6379/0
+AWS_ACCESS_KEY_ID=fake
+AWS_SECRET_ACCESS_KEY=fake%
+EOF
+    echo "✅ .env file created successfully"
+}
+
 install_libxmlsec1
 
 # Poetry installation
