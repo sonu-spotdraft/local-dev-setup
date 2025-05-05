@@ -4,298 +4,284 @@
 set -e
 set -o pipefail
 
-# Configuration
-readonly LOG_FILE="setup.log"
-readonly ERROR_LOG="setup_errors.log"
-readonly BACKUP_DIR="$HOME/setup_backup_$(date +%Y%m%d_%H%M%S)"
-readonly DB_NAME="spotdraft-django-rest-api"
-
-# Logging setup
-exec 3>&1 4>&2
-trap 'exec 2>&4 1>&3' 0 1 2 3
-exec 1> >(tee -a "$LOG_FILE") 2> >(tee -a "$ERROR_LOG" >&2)
-
-# Backup existing configurations
-backup_configs() {
-    echo "📦 Backing up existing configurations..."
-    mkdir -p "$BACKUP_DIR"
-    [ -f ~/.zshrc ] && cp ~/.zshrc "$BACKUP_DIR/.zshrc.bak"
-    [ -f .env ] && cp .env "$BACKUP_DIR/.env.bak"
-    echo "✅ Configurations backed up to $BACKUP_DIR"
+# Function to print colored output
+print_message() {
+    echo -e "\033[1;32m$1\033[0m"
 }
 
-# Enhanced error handling for each function
-handle_error() {
-    local function_name=$1
-    local exit_code=$2
-    echo "❌ Error in $function_name (exit code: $exit_code)"
-    echo "Check $ERROR_LOG for details"
-    return $exit_code
+print_error() {
+    echo -e "\033[1;31m$1\033[0m"
 }
 
-check_if_rosetta_present() {
-    echo "🔍 Checking Rosetta installation..."
-    if /usr/bin/pgrep oahd >/dev/null 2>&1; then
-        echo "✅ Rosetta is already installed."
-    else
-        echo "🚀 Installing Rosetta..."
-        softwareupdate --install-rosetta --agree-to-license
-        if [ $? -eq 0 ]; then
-            echo "✅ Rosetta installation successful."
-        else
-            echo "❌ Failed to install Rosetta."
-            return 1
-        fi
-    fi
-}
+# Check if running on macOS
+if [[ "$(uname -m)" != "x86_64" ]]; then
+    print_error "This script is designed for Intel only"
+    exit 1
+fi
 
-install_homebrew() {
-    echo "🔍 Checking Homebrew installation..."
-    if ! command -v brew &>/dev/null; then
-        echo "🚀 Installing Homebrew..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    else
-        echo "✅ Homebrew is already installed. Version: $(brew --version)"
-    fi
-    
-    # Initialize Homebrew environment
+# Check and install Homebrew
+if ! command -v brew &> /dev/null; then
+    print_message "Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+else
+    print_message "Homebrew is already installed"
+fi
+
+# Get Homebrew prefix based on architecture
+BREW_PREFIX=$(brew --prefix)
+export POETRY_VERSION=1.4.0
+
+echo "BREW_PREFIX: $BREW_PREFIX"
+
+#if brew doctor output error , else print ready to brew 
+if brew doctor &> /dev/null; then
+    print_message "Ready to brew"
+fi
+
+# Set up Homebrew shell environment based on architecture
+if [[ "$(uname -m)" == "arm64" ]]; then
+    print_message "Setting up Homebrew for Apple Silicon..."
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+else
+    print_message "Setting up Homebrew for Intel..."
     eval "$(/usr/local/bin/brew shellenv)"
-    
-    # Set up Intel mode Homebrew
-    export HOMEBREW_PREFIX="/usr/local"
-    export HOMEBREW_CELLAR="/usr/local/Cellar"
-    export HOMEBREW_REPOSITORY="/usr/local/Homebrew"
-    export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-    
-    # Create and export the ibrew function instead of an alias
-    ibrew() {
-        arch -x86_64 /usr/local/bin/brew "$@"
-    }
-    export -f ibrew
-    
-    echo "✅ Homebrew Intel mode configured. Use 'ibrew' for Intel-specific operations."
-}
+fi
 
-set_current_shell_arch_to_intel86() {
-    echo "🔍 Checking current shell architecture..."
-    CURRENT_ARCH=$(arch)
-    echo "📌 Current architecture: $CURRENT_ARCH"
+# Install required packages
+print_message "Installing required packages..."
+brew install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
 
-    if [ "$CURRENT_ARCH" != "i386" ]; then
-        echo "🔄 Setting up Intel x86_64 environment..."
-        export HOMEBREW_PREFIX="/usr/local"
-        export HOMEBREW_CELLAR="/usr/local/Cellar"
-        export HOMEBREW_REPOSITORY="/usr/local/Homebrew"
-        export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-        alias ibrew="arch -x86_64 /usr/local/bin/brew"
-        echo "✅ Intel x86_64 environment configured."
-        echo "ℹ️ Use 'ibrew' command for Intel-specific Homebrew operations."
+# PostgreSQL setup
+print_message "Setting up PostgreSQL..."
+if ! command -v postgres &> /dev/null; then
+    print_message "Installing PostgreSQL..."
+    brew install postgresql
+else
+    print_message "PostgreSQL is already installed"
+fi
+
+# Start PostgreSQL if not running
+if ! pg_isready &> /dev/null; then
+    print_message "Starting PostgreSQL..."
+    brew services start postgresql
+    sleep 5  # Wait for PostgreSQL to start
+else
+    print_message "PostgreSQL is already running"
+fi
+
+# Create postgres user if it doesn't exist
+if ! psql -U postgres -c "SELECT 1" &> /dev/null; then
+    print_message "Creating postgres user..."
+    createuser -s postgres
+else
+    print_message "postgres user already exists"
+fi
+
+# Create database if it doesn't exist
+print_message "Setting up database..."
+if ! psql -U postgres -lqt | cut -d \| -f 1 | grep -qw spotdraft-django-rest-api; then
+    print_message "Creating spotdraft-django-rest-api database..."
+    createdb -U postgres spotdraft-django-rest-api
+else
+    print_message "spotdraft-django-rest-api database already exists"
+fi
+
+# Redis setup
+print_message "Setting up Redis..."
+if ! command -v redis-cli &> /dev/null; then
+    print_message "Installing Redis..."
+    brew install redis
+else
+    print_message "Redis is already installed"
+fi
+
+# Start Redis if not running
+if ! redis-cli ping &> /dev/null; then
+    print_message "Starting Redis..."
+    brew services start redis
+    sleep 2  # Wait for Redis to start
+else
+    print_message "Redis is already running"
+fi
+
+
+# Set up environment variables for installed packages
+print_message "Setting up environment variables..."
+# Development libraries paths
+# SSL and Security required for pyenv and libxmlsec1
+export LDFLAGS="-L$BREW_PREFIX/opt/openssl@3/lib"
+export CPPFLAGS="-I$BREW_PREFIX/opt/openssl@3/include"
+export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl@3/lib/pkgconfig"
+
+# XML and XSLT required for libxmlsec1 
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/libxslt/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/libxslt/include"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$BREW_PREFIX/opt/libxml2/lib/pkgconfig:$BREW_PREFIX/opt/libxslt/lib/pkgconfig"
+
+# Compression libraries required for pyenv
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/zlib/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/zlib/include"
+
+# Database required for pyenv
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/sqlite/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/sqlite/include"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$BREW_PREFIX/opt/sqlite/lib/pkgconfig"
+
+# Readline required for pyenv
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/readline/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/readline/include"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$BREW_PREFIX/opt/readline/lib/pkgconfig"
+
+# XZ required for libxmlsec1
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/xz/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/xz/include"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$BREW_PREFIX/opt/xz/lib/pkgconfig"
+
+# Tcl-Tk required for pyenv
+export LDFLAGS="$LDFLAGS -L$BREW_PREFIX/opt/tcl-tk/lib"
+export CPPFLAGS="$CPPFLAGS -I$BREW_PREFIX/opt/tcl-tk/include"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$BREW_PREFIX/opt/tcl-tk/lib/pkgconfig"
+
+# libxml2 required for libxmlsec1
+export LDFLAGS="-L$BREW_PREFIX/opt/libxml2/lib $LDFLAGS"
+export CPPFLAGS="-I$BREW_PREFIX/opt/libxml2/include $CPPFLAGS"
+export PKG_CONFIG_PATH="$BREW_PREFIX/opt/libxml2/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+# Add all paths to PATH
+export PATH="$BREW_PREFIX/opt/openssl@3/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/sqlite/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/readline/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/xz/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/zlib/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/tcl-tk/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/libxmlsec1/bin:$PATH"
+
+print_message "Environment variables set up completed"
+
+# Python environment setup
+print_message "Setting up Python environment..."
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - zsh)"
+
+# Install Python version from .python-version
+if [ -f .python-version ]; then
+    PYTHON_VERSION=$(cat .python-version)
+    print_message "Checking Python version $PYTHON_VERSION..."
+    
+    if pyenv versions | grep -q "$PYTHON_VERSION"; then
+        print_message "Python $PYTHON_VERSION is already installed"
     else
-        echo "✅ Already running in x86_64 mode."
+        print_message "Installing Python version $PYTHON_VERSION..."
+        pyenv install -v $PYTHON_VERSION
     fi
-}
-
-install_most_common_dev_deps() {
-    echo "📦 Checking and installing development dependencies..."
-    
-    # Core CLI packages
-    BREW_PACKAGES=(
-        readline    # Line editing library
-        sqlite3    # Lightweight database
-        xz         # Data compression
-        zlib       # Data compression library
-        postgresql # Database server
-        poppler    # PDF rendering library
-        pyenv      # Python version manager
-        pre-commit # Git hook manager
-        swig
-    )
-
-    # GUI applications
-    CASK_PACKAGES=(
-        ngrok      # Local tunnel proxy
-    )
-
-    # Install CLI packages
-    for package in "${BREW_PACKAGES[@]}"; do
-        if ibrew list "$package" &>/dev/null; then
-            echo "✅ $package is already installed"
-        else
-            echo "📦 Installing $package..."
-            ibrew install "$package"
-        fi
-    done
-
-    # Install GUI applications
-    for cask in "${CASK_PACKAGES[@]}"; do
-        if ibrew list --cask "$cask" &>/dev/null; then
-            echo "✅ $cask is already installed"
-        else
-            echo "📦 Installing $cask..."
-            ibrew install --cask "$cask"
-        fi
-    done
-
-    # Configure pyenv for Python version management
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    # Initialize pyenv shell integration
-    eval "$(pyenv init --path)"
-    eval "$(pyenv init -)"
-    # Run pyenv in Intel mode (x86_64)
-    alias ipyenv="arch -x86_64 pyenv"
-}
-
-setup_postgres() {
-    echo "🗄️ Setting up PostgreSQL..."
-    
-    # Check if PostgreSQL is already installed
-    if ibrew list postgresql &>/dev/null; then
-        echo "✅ PostgreSQL is already installed"
-    else
-        echo "📦 Installing PostgreSQL..."
-        ibrew install postgresql
-    fi
-    
-    # Check if PostgreSQL service is already running
-    if ibrew services list | grep -q "postgresql.*started"; then
-        echo "✅ PostgreSQL service is already running"
-    else
-        echo "🚀 Starting PostgreSQL service..."
-        ibrew services start postgresql
-    fi
-
-    # Check if postgres user exists
-    if psql -U postgres -c "SELECT 1" &>/dev/null; then
-        echo "✅ PostgreSQL superuser already exists"
-    else
-        echo "👤 Creating PostgreSQL superuser..."
-        createuser -s postgres
-    fi
-    
-    echo "⏳ Waiting for PostgreSQL service to initialize..."
-    echo "Press Enter when you're ready to proceed with database creation..."
-    read -r
-    
-    # Check if database already exists
-    if psql -U postgres -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
-        echo "✅ Database '$DB_NAME' already exists"
-    else
-        echo "💾 Creating default database..."
-        psql -U postgres -c "CREATE DATABASE \"$DB_NAME\";"
-    fi
-}
-
-setup_redis() {
-    echo "🔴 Setting up Redis..."
-    ibrew list redis &>/dev/null || ibrew install redis
-    ibrew services start redis || {
-        echo "❌ Failed to start Redis service"
-        return 1
-    }
-}
+else
+    print_error ".python-version file not found"
+    exit 1
+fi
 
 install_libxmlsec1() {
-    echo "📦 Installing libxmlsec1..."
+    # First unlink libxmlsec1
+    echo "📦 Unlinking libxmlsec1..."
+    brew unlink libxmlsec1 2>/dev/null || true
+    
+    # Then uninstall it
+    echo "📦 Uninstalling libxmlsec1..."
+    brew uninstall --force libxmlsec1 2>/dev/null || true
+    
+    # Install libxmlsec1
     export DESIRED_SHA="7f35e6ede954326a10949891af2dba47bbe1fc17"
     TEMP_DIR=$(mktemp -d)
     FORMULA_PATH="$TEMP_DIR/libxmlsec1.rb"
+    
+    # Download the formula directly from Homebrew's repository
     curl -fsSL "https://raw.githubusercontent.com/Homebrew/homebrew-core/${DESIRED_SHA}/Formula/libxmlsec1.rb" -o "$FORMULA_PATH" || {
         echo "❌ Failed to download libxmlsec1 formula"
         return 1
     }
-
-    sed -i.bak 's|url ".*"|url "https://www.aleksey.com/xmlsec/download/older-releases/xmlsec1-1.2.37.tar.gz"|' "$FORMULA_PATH"
-
-    ibrew install --build-from-source --formula "$FORMULA_PATH" || {
+    
+    # Update OpenSSL version from 1.1 to 3
+    sed -i.bak 's/openssl@1.1/openssl@3/g' "$FORMULA_PATH"
+    echo "📦 Updated OpenSSL dependency from 1.1 to 3"
+    
+    # Update the URL to use the older-releases path
+    sed -i.bak 's|url ".*/download/xmlsec1-1.2.37.tar.gz"|url "https://www.aleksey.com/xmlsec/download/older-releases/xmlsec1-1.2.37.tar.gz"|' "$FORMULA_PATH"
+    echo "📦 Updated URL to use older-releases path"
+    
+    # Update the openssl path in install args
+    sed -i.bak 's|--with-openssl=#{Formula\["openssl@1.1"\]|--with-openssl=#{Formula\["openssl@3"\]|' "$FORMULA_PATH"
+    echo "📦 Updated OpenSSL path in install args"
+    
+    # Force install from source
+    brew install --build-from-source --formula "$FORMULA_PATH" || {
         echo "❌ Failed to install libxmlsec1"
         return 1
     }
-
-    # Configure XML libraries
-    export PKG_CONFIG_PATH="/usr/local/opt/libxml2/lib/pkgconfig:/usr/local/opt/libxslt/lib/pkgconfig:/usr/local/opt/openssl@3.0/lib/pkgconfig:/usr/local/Cellar/libxmlsec1/1.2.37/lib/pkgconfig"
-    export PATH="/usr/local/opt/libxml2/bin:$PATH"
-    export DYLD_LIBRARY_PATH="/usr/local/Cellar/libxmlsec1/1.2.37/lib:$DYLD_LIBRARY_PATH"
-    export PATH="/usr/local/Cellar/libxmlsec1/1.3.7/bin:$PATH"
+    
+    # Clean up
+    rm -rf "$TEMP_DIR"
+    echo "✅ libxmlsec1 installed successfully"
+    brew pin libxmlsec1
 }
 
-fix_duplicate_credentials() {
-    echo "🔧 Fixing duplicate credentials..."
-    psql -U postgres -d "$DB_NAME" -q -c "
-        UPDATE integrations_v2_nativeintegrationcredential
-        SET name = name || '_' || id
-        WHERE id IN (
-            SELECT id FROM (
-                SELECT id, ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) as rn
-                FROM integrations_v2_nativeintegrationcredential
-            ) t WHERE rn > 1
-        );" 2>/dev/null
+install_poetry() {
+    print_message "Installing Poetry..."
+    PYTHON_PATH=$(which python)
+    PYTHON_VERSION=$(python --version)
+    print_message "Using $PYTHON_PATH ($PYTHON_VERSION) to install Poetry..."
+    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | python -
 }
 
-create_env_file() {
-    echo "📝 Creating .env file..."
-    cat > .env << EOF
-CACHE_BACKEND=django_redis.cache.RedisCache
-CACHE_LOCATION=redis://127.0.0.1:6379/1
-DEBUG=True
-CLUSTER_URL=http://localhost:8001/
-CELERY_BROKER_URL=redis://127.0.0.1:6379/0
-AWS_ACCESS_KEY_ID=fake
-AWS_SECRET_ACCESS_KEY=fake%
-EOF
-    echo "✅ .env file created successfully"
-}
+remove_poetry() {
+    print_message "Removing existing Poetry installation..."
+    PYTHON_PATH=$(which python)
+    PYTHON_VERSION=$(python --version)
+    print_message "Using $PYTHON_PATH ($PYTHON_VERSION) to install Poetry..."
+    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | python - --uninstall
+    # Remove Poetry binary from various possible locations
+    rm -rf /Users/sonu/Library/Application\ Support/pypoetry
 
-setup_poetry() {
-    echo "🐍 Setting up Poetry..."
-    alias ipython="arch -x86_64 python"  # Alias for running Python in Intel mode
-    # Check if Poetry is already installed
-    if command -v poetry &>/dev/null; then
-        echo "✅ Poetry is already installed. Version: $(poetry --version)"
-    else
-        echo "📦 Installing Poetry..."
-        export POETRY_VERSION=1.4.0
-        curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | ipython -
-        export PATH="$HOME/.local/bin:$PATH"
+    if [ -f "$HOME/Library/Application\ Support/pypoetry" ]; then
+        rm -rf "$HOME/Library/Application\ Support/pypoetry"
+        echo "Removed $HOME/Library/Application\ Support/pypoetry"
     fi
-    arch -x86_64 python -m venv env
-    source env/bin/activate
-    poetry config virtualenvs.create false
-    poetry install
-    echo "✅ Poetry setup completed successfully"
+    if [ -d "$HOME/Library/Caches/pypoetry" ]; then
+        rm -rf "$HOME/Library/Caches/pypoetry"
+        echo "Removed $HOME/Library/Caches/pypoetry"
+    fi
+    print_message "Poetry removal completed"
 }
 
-# Main execution
-main() {
-    echo "🚀 Starting setup process..."
-    
-    # System setup
-    check_if_rosetta_present || handle_error "check_if_rosetta_present" $?
-    install_homebrew || handle_error "install_homebrew" $?
-    set_current_shell_arch_to_intel86 || handle_error "set_current_shell_arch_to_intel86" $?
-    
-    # Package installation
-    install_most_common_dev_deps || handle_error "install_most_common_dev_deps" $?
-    install_libxmlsec1 || handle_error "install_libxmlsec1" $?
-    
-    # Database setup
-    setup_postgres || handle_error "setup_postgres" $?
-    setup_redis || handle_error "setup_redis" $?
-    
-    # Python setup
-    echo "🐍 Setting up Python 3.10.11..."
-    ipyenv install 3.10.11 --skip-existing || handle_error "pyenv_install" $?
+install_libxmlsec1
 
-    # Create .env file
-    create_env_file || handle_error "create_env_file" $?
-    
-    install_libxmlsec1 || handle_error "install_libxmlsec1" $?
-    setup_poetry || handle_error "setup_poetry" $?
+# Poetry installation
+if command -v poetry &> /dev/null; then
+    print_message "Poetry is already installed, removing existing installation..."
+    remove_poetry
+    print_message "Reinstalling Poetry..."
+    install_poetry
+else
+    print_message "Installing Poetry..."
+    install_poetry
+fi
 
-    echo -e "\n✅ Setup completed successfully!"
-    echo "📝 Logs available in $LOG_FILE"
-    echo "❌ Errors (if any) in $ERROR_LOG"
-    echo "📦 Backups in $BACKUP_DIR"
-}
+if [ -d "env" ]; then
+    rm -rf env
+fi
 
-main "$@"
+python -m venv env
+
+source env/bin/activate 
+
+# Configure Poetry
+print_message "Configuring Poetry..."
+
+
+poetry config virtualenvs.create false
+
+# Install dependencies
+print_message "Installing project dependencies..."
+
+poetry install
+
+print_message "Backend setup completed successfully!"
