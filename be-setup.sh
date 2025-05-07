@@ -16,6 +16,26 @@ print_error() {
 # Handle Ctrl+C
 trap 'print_error "\nScript interrupted by user. Exiting..."; exit 1' INT
 
+# Check if script is run with sudo
+if [ "$EUID" -eq 0 ]; then 
+    print_error "Please do not run this script with sudo. It will prompt for sudo access when needed."
+    exit 1
+fi
+
+# Check and install Rosetta if needed
+if ! /usr/bin/arch -x86_64 /usr/bin/true &> /dev/null; then
+    print_message "Rosetta is not installed. Installing Rosetta..."
+    print_message "You may be prompted for your password to install Rosetta..."
+    if /usr/sbin/softwareupdate --install-rosetta --agree-to-license; then
+        print_message "Rosetta installed successfully"
+    else
+        print_error "Failed to install Rosetta. Please ensure you have the necessary permissions."
+        exit 1
+    fi
+else
+    print_message "Rosetta is already installed"
+fi
+
 # Check if running on macOS
 if [[ "$(uname -m)" != "x86_64" ]]; then
     print_error "This script is designed for Intel only"
@@ -52,7 +72,7 @@ fi
 
 # Install required packages
 print_message "Installing required packages..."
-brew install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
+HOMEBREW_NO_INSTALL_UPGRADE=1 brew install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
 
 # PostgreSQL setup
 print_message "Setting up PostgreSQL..."
@@ -173,10 +193,19 @@ if [ -f .python-version ]; then
     print_message "Checking Python version $PYTHON_VERSION..."
     
     if pyenv versions | grep -q "$PYTHON_VERSION"; then
-        print_message "Python $PYTHON_VERSION is already installed"
+        print_message "Python $PYTHON_VERSION is already installed, checking architecture..."
+        PYTHON_ARCH=$(pyenv shell $PYTHON_VERSION && python -c "import platform; print(platform.machine())")
+        if [ "$PYTHON_ARCH" != "x86_64" ]; then
+            print_message "Python $PYTHON_VERSION is installed but not on x86_64 architecture. Removing it..."
+            pyenv uninstall  $PYTHON_VERSION
+            print_message "Installing Python version $PYTHON_VERSION for x86_64..."
+            pyenv install $PYTHON_VERSION
+        else
+            print_message "Python $PYTHON_VERSION is already installed with x86_64 architecture"
+        fi
     else
-        print_message "Installing Python version $PYTHON_VERSION..."
-        pyenv install -v $PYTHON_VERSION
+        print_message "Installing Python version $PYTHON_VERSION for x86_64..."
+        pyenv install $PYTHON_VERSION
     fi
 else
     print_error ".python-version file not found"
