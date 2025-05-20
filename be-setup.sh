@@ -4,6 +4,8 @@
 set -e
 set -o pipefail
 
+echo "arch: $(arch)"
+
 # Function to print colored output
 print_message() {
     echo -e "\033[1;32m$1\033[0m"
@@ -39,94 +41,123 @@ fi
 # Check if running on macOS
 if [[ "$(uname -m)" != "x86_64" ]]; then
     print_error "This script is designed for Intel only"
-    exit 1
+    # exit 1
 fi
 
-# Check and install Homebrew
-if ! command -v brew &> /dev/null; then
-    print_message "Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Define Intel-specific paths
+INTEL_BREW_PATH="/usr/local/bin/brew"
+INTEL_BREW_PREFIX="/usr/local"
+
+# Check and install Intel Homebrew
+if ! command -v $INTEL_BREW_PATH &> /dev/null; then
+    print_message "Installing Intel Homebrew..."
+    arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 else
-    print_message "Homebrew is already installed"
+    print_message "Intel Homebrew is already installed"
 fi
 
-# Get Homebrew prefix based on architecture
-BREW_PREFIX=$(brew --prefix)
+# Get Homebrew prefix for Intel
+BREW_PREFIX=$(arch -x86_64 $INTEL_BREW_PATH --prefix)
 export POETRY_VERSION=1.4.0
 
 echo "BREW_PREFIX: $BREW_PREFIX"
 
 #if brew doctor output error , else print ready to brew 
-if brew doctor &> /dev/null; then
+if arch -x86_64 $INTEL_BREW_PATH doctor &> /dev/null; then
     print_message "Ready to brew"
 fi
 
-# Set up Homebrew shell environment based on architecture
-if [[ "$(uname -m)" == "arm64" ]]; then
-    print_message "Setting up Homebrew for Apple Silicon..."
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-else
-    print_message "Setting up Homebrew for Intel..."
-    eval "$(/usr/local/bin/brew shellenv)"
-fi
+# Set up Homebrew shell environment for Intel only
+print_message "Setting up Intel Homebrew environment..."
+eval "$(arch -x86_64 $INTEL_BREW_PATH shellenv)"
 
-# Install required packages
-print_message "Installing required packages..."
-HOMEBREW_NO_INSTALL_UPGRADE=1 brew install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
+# Install required packages using Intel Homebrew
+print_message "Installing required packages using Intel Homebrew..."
+HOMEBREW_NO_INSTALL_UPGRADE=1 arch -x86_64 $INTEL_BREW_PATH install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
 
-# PostgreSQL setup
+setup_pyenv() {
+    export PYENV_ROOT="$HOME/.pyenv"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+
+    # Initialize pyenv for current session only
+    if command -v $INTEL_BREW_PREFIX/bin/pyenv &> /dev/null; then
+        # Set up pyenv environment
+        export PYENV_SHELL="zsh"
+        export PATH="$PYENV_ROOT/shims:$PATH"
+        export PYENV_VERSION=""
+        
+        # Add pyenv to PATH
+        export PATH="$PYENV_ROOT/bin:$PATH"
+        
+        # Initialize pyenv
+        eval "$($INTEL_BREW_PREFIX/bin/pyenv init --path)"
+        eval "$($INTEL_BREW_PREFIX/bin/pyenv init -)"
+        
+        # Verify pyenv is working
+        if ! $INTEL_BREW_PREFIX/bin/pyenv versions &> /dev/null; then
+            print_error "Failed to initialize pyenv. Please check your installation."
+            exit 1
+        fi
+    else
+        print_error "pyenv not found at $INTEL_BREW_PREFIX/bin/pyenv"
+        exit 1
+    fi
+}
+
+setup_pyenv
+
+# PostgreSQL setup using Intel Homebrew
 print_message "Setting up PostgreSQL..."
-if ! command -v postgres &> /dev/null; then
+if ! command -v $INTEL_BREW_PREFIX/bin/postgres &> /dev/null; then
     print_message "Installing PostgreSQL..."
-    brew install postgresql
+    arch -x86_64 $INTEL_BREW_PATH install postgresql
 else
     print_message "PostgreSQL is already installed"
 fi
 
 # Start PostgreSQL if not running
-if ! pg_isready &> /dev/null; then
+if ! $INTEL_BREW_PREFIX/bin/pg_isready &> /dev/null; then
     print_message "Starting PostgreSQL..."
-    brew services start postgresql
+    arch -x86_64 $INTEL_BREW_PATH services start postgresql
     sleep 5  # Wait for PostgreSQL to start
 else
     print_message "PostgreSQL is already running"
 fi
 
 # Create postgres user if it doesn't exist
-if ! psql -U postgres -c "SELECT 1" &> /dev/null; then
+if ! $INTEL_BREW_PREFIX/bin/psql -U postgres -c "SELECT 1" &> /dev/null; then
     print_message "Creating postgres user..."
-    createuser -s postgres
+    $INTEL_BREW_PREFIX/bin/createuser -s postgres
 else
     print_message "postgres user already exists"
 fi
 
 # Create database if it doesn't exist
 print_message "Setting up database..."
-if ! psql -U postgres -lqt | cut -d \| -f 1 | grep -qw spotdraft-django-rest-api; then
+if ! $INTEL_BREW_PREFIX/bin/psql -U postgres -lqt | cut -d \| -f 1 | grep -qw spotdraft-django-rest-api; then
     print_message "Creating spotdraft-django-rest-api database..."
-    createdb -U postgres spotdraft-django-rest-api
+    $INTEL_BREW_PREFIX/bin/createdb -U postgres spotdraft-django-rest-api
 else
     print_message "spotdraft-django-rest-api database already exists"
 fi
 
-# Redis setup
+# Redis setup using Intel Homebrew
 print_message "Setting up Redis..."
-if ! command -v redis-cli &> /dev/null; then
+if ! command -v $INTEL_BREW_PREFIX/bin/redis-cli &> /dev/null; then
     print_message "Installing Redis..."
-    brew install redis
+    arch -x86_64 $INTEL_BREW_PATH install redis
 else
     print_message "Redis is already installed"
 fi
 
 # Start Redis if not running
-if ! redis-cli ping &> /dev/null; then
+if ! arch -x86_64 $INTEL_BREW_PREFIX/bin/redis-cli ping &> /dev/null; then
     print_message "Starting Redis..."
-    brew services start redis
+    arch -x86_64 $INTEL_BREW_PATH services start redis
     sleep 2  # Wait for Redis to start
 else
     print_message "Redis is already running"
 fi
-
 
 # Set up environment variables for installed packages
 print_message "Setting up environment variables..."
@@ -183,43 +214,78 @@ print_message "Environment variables set up completed"
 
 # Python environment setup
 print_message "Setting up Python environment..."
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init - zsh)"
 
-# Install Python version from .python-version
-if [ -f .python-version ]; then
-    PYTHON_VERSION=$(cat .python-version)
-    print_message "Checking Python version $PYTHON_VERSION..."
+
+
+# Check if Intel pyenv is installed
+if command -v $INTEL_BREW_PREFIX/bin/pyenv &> /dev/null; then
+    print_message "Intel pyenv is already installed, checking Python versions..."
     
-    if pyenv versions | grep -q "$PYTHON_VERSION"; then
-        print_message "Python $PYTHON_VERSION is already installed, checking architecture..."
-        PYTHON_ARCH=$(pyenv shell $PYTHON_VERSION && python -c "import platform; print(platform.machine())")
-        if [ "$PYTHON_ARCH" != "x86_64" ]; then
-            print_message "Python $PYTHON_VERSION is installed but not on x86_64 architecture. Removing it..."
-            pyenv uninstall  $PYTHON_VERSION
-            print_message "Installing Python version $PYTHON_VERSION for x86_64..."
-            pyenv install $PYTHON_VERSION
+    # Store existing Python versions
+    EXISTING_VERSIONS=$($INTEL_BREW_PREFIX/bin/pyenv versions --bare)
+    
+    # Check if .python-version exists and get required version
+    if [ -f .python-version ]; then
+        REQUIRED_VERSION=$(cat .python-version)
+        print_message "Required Python version: $REQUIRED_VERSION"
+        
+        # Check if required version is installed and its architecture
+        if $INTEL_BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
+            if ! command -v python &> /dev/null; then
+                print_message "Python is not installed. Installing Python version $REQUIRED_VERSION..."
+                #  uninstall required version first for deleting existing installation only if its exist in the system 
+                if $INTEL_BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
+                    $INTEL_BREW_PREFIX/bin/pyenv uninstall -f $REQUIRED_VERSION
+                fi
+                $INTEL_BREW_PREFIX/bin/pyenv install $REQUIRED_VERSION
+                if [ $? -ne 0 ]; then
+                    print_error "Failed to install Python $REQUIRED_VERSION"
+                    exit 1
+                fi
+            fi
+            
+            PYTHON_ARCH=$(arch -x86_64 python -c "import platform; print(platform.machine())")
+            if [ "$PYTHON_ARCH" != "x86_64" ]; then
+                print_message "Python $REQUIRED_VERSION is installed but not on x86_64 architecture"
+                print_message "Removing Intel pyenv installation..."
+
+                arch -x86_64 $INTEL_BREW_PATH uninstall pyenv 
+
+                # Remove Intel pyenv
+                rm -rf "$HOME/.pyenv"
+                
+                # Remove pyenv from shell configuration
+                if [ -f "$HOME/.zshrc" ]; then
+                    sed -i.bak '/pyenv/d' "$HOME/.zshrc"
+                    sed -i.bak '/pyenv/d' "$HOME/.zprofile"
+                fi
+                if [ -f "$HOME/.bash_profile" ]; then
+                    sed -i.bak '/pyenv/d' "$HOME/.bash_profile"
+                fi
+                
+                print_message "Intel pyenv removed successfully"
+            else
+                print_message "Python $REQUIRED_VERSION is already installed with x86_64 architecture"
+            fi
         else
-            print_message "Python $PYTHON_VERSION is already installed with x86_64 architecture"
+            print_message "Required Python version $REQUIRED_VERSION is not installed"
         fi
     else
-        print_message "Installing Python version $PYTHON_VERSION for x86_64..."
-        pyenv install $PYTHON_VERSION
+        print_error ".python-version file not found"
+        exit 1
     fi
 else
-    print_error ".python-version file not found"
-    exit 1
+    print_message "Intel pyenv is not installed"
 fi
 
 install_libxmlsec1() {
     # First unlink libxmlsec1
     echo "📦 Unlinking libxmlsec1..."
-    brew unlink libxmlsec1 2>/dev/null || true
+    arch -x86_64 $INTEL_BREW_PATH unlink libxmlsec1 2>/dev/null || true
     
     # Then uninstall it
     echo "📦 Uninstalling libxmlsec1..."
-    brew uninstall --force libxmlsec1 2>/dev/null || true
+    arch -x86_64 $INTEL_BREW_PATH uninstall --force libxmlsec1 2>/dev/null || true
     
     # Install libxmlsec1
     export DESIRED_SHA="7f35e6ede954326a10949891af2dba47bbe1fc17"
@@ -245,7 +311,7 @@ install_libxmlsec1() {
     echo "📦 Updated OpenSSL path in install args"
     
     # Force install from source
-    brew install --build-from-source --formula "$FORMULA_PATH" || {
+    arch -x86_64 $INTEL_BREW_PATH install --build-from-source --formula "$FORMULA_PATH" || {
         echo "❌ Failed to install libxmlsec1"
         return 1
     }
@@ -253,7 +319,7 @@ install_libxmlsec1() {
     # Clean up
     rm -rf "$TEMP_DIR"
     echo "✅ libxmlsec1 installed successfully"
-    brew pin libxmlsec1
+    arch -x86_64 $INTEL_BREW_PATH pin libxmlsec1
 }
 
 install_poetry() {
@@ -261,7 +327,7 @@ install_poetry() {
     PYTHON_PATH=$(which python)
     PYTHON_VERSION=$(python --version)
     print_message "Using $PYTHON_PATH ($PYTHON_VERSION) to install Poetry..."
-    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | python -
+    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | arch -x86_64 python -
 }
 
 remove_poetry() {
@@ -269,7 +335,7 @@ remove_poetry() {
     PYTHON_PATH=$(which python)
     PYTHON_VERSION=$(python --version)
     print_message "Using $PYTHON_PATH ($PYTHON_VERSION) to install Poetry..."
-    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | python - --uninstall
+    curl -sSL https://raw.githubusercontent.com/python-poetry/install.python-poetry.org/e8d8f76750e1abaebd628e2323a49163d102c9d6/install-poetry.py | arch -x86_64 python - --uninstall
     # Remove Poetry binary from various possible locations
     rm -rf /Users/sonu/Library/Application\ Support/pypoetry
 
@@ -320,21 +386,36 @@ if [ -d "env" ]; then
     rm -rf env
 fi
 
-python -m venv env
+echo "python arch: $(arch -x86_64 python -c "import platform; print(platform.machine())")"
+
+arch -x86_64 python -m venv env
 
 source env/bin/activate 
 
-# Configure Poetry
-print_message "Configuring Poetry..."
-
-
-poetry config virtualenvs.create false
-
-# Install dependencies
-print_message "Installing project dependencies..."
-
-poetry install
+# Verify virtual environment activation
+if [ -z "$VIRTUAL_ENV" ]; then
+    print_error "Failed to activate virtual environment"
+    exit 1
+else
+    print_message "Virtual environment activated: $VIRTUAL_ENV"
+    print_message "Python path: $(which python)"
+    print_message "Python version: $(python --version)"
+    print_message "Python architecture: $(arch -x86_64 python -c "import platform; print(platform.machine())")"
+fi
 
 create_env_file
 
-print_message "Backend setup completed successfully!"
+poetry config virtualenvs.create false
+
+print_message "Setup completed successfully!"
+print_message "Please run the following commands to complete the setup:"
+print_message "1. psql spotdraft-django-rest-api < dev_<date>.sql"
+print_message "2. source env/bin/activate"
+print_message "3. poetry install"
+print_message "4. python manage.py migrate"
+print_message "5. python manage.py runserver"
+
+# print_message "\nTo enable pyenv in new terminal sessions, add the following to your shell configuration (.zshrc or .bash_profile):"
+# print_message 'export PYENV_ROOT="$HOME/.pyenv"'
+# print_message 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"'
+# print_message 'eval "$(pyenv init -)"'
