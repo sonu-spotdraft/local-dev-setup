@@ -25,7 +25,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Check and install Rosetta if needed
-if ! /usr/bin/arch -x86_64 /usr/bin/true &> /dev/null; then
+if ! /usr/sbin/softwareupdate --list-rosetta &> /dev/null; then
     print_message "Rosetta is not installed. Installing Rosetta..."
     print_message "You may be prompted for your password to install Rosetta..."
     if /usr/sbin/softwareupdate --install-rosetta --agree-to-license; then
@@ -41,12 +41,11 @@ fi
 # Check if running on macOS
 if [[ "$(uname -m)" != "x86_64" ]]; then
     print_error "This script is designed for Intel only"
-    # exit 1
+    exit 1
 fi
 
 # Define Intel-specific paths
 INTEL_BREW_PATH="/usr/local/bin/brew"
-INTEL_BREW_PREFIX="/usr/local"
 
 # Check and install Intel Homebrew
 if ! command -v $INTEL_BREW_PATH &> /dev/null; then
@@ -80,7 +79,7 @@ setup_pyenv() {
     export PATH="$PYENV_ROOT/bin:$PATH"
 
     # Initialize pyenv for current session only
-    if command -v $INTEL_BREW_PREFIX/bin/pyenv &> /dev/null; then
+    if command -v $BREW_PREFIX/bin/pyenv &> /dev/null; then
         # Set up pyenv environment
         export PYENV_SHELL="zsh"
         export PATH="$PYENV_ROOT/shims:$PATH"
@@ -90,16 +89,16 @@ setup_pyenv() {
         export PATH="$PYENV_ROOT/bin:$PATH"
         
         # Initialize pyenv
-        eval "$($INTEL_BREW_PREFIX/bin/pyenv init --path)"
-        eval "$($INTEL_BREW_PREFIX/bin/pyenv init -)"
+        eval "$($BREW_PREFIX/bin/pyenv init --path)"
+        eval "$($BREW_PREFIX/bin/pyenv init -)"
         
         # Verify pyenv is working
-        if ! $INTEL_BREW_PREFIX/bin/pyenv versions &> /dev/null; then
+        if ! $BREW_PREFIX/bin/pyenv versions &> /dev/null; then
             print_error "Failed to initialize pyenv. Please check your installation."
             exit 1
         fi
     else
-        print_error "pyenv not found at $INTEL_BREW_PREFIX/bin/pyenv"
+        print_error "pyenv not found at $BREW_PREFIX/bin/pyenv"
         exit 1
     fi
 }
@@ -108,7 +107,7 @@ setup_pyenv
 
 # PostgreSQL setup using Intel Homebrew
 print_message "Setting up PostgreSQL..."
-if ! command -v $INTEL_BREW_PREFIX/bin/postgres &> /dev/null; then
+if ! command -v $BREW_PREFIX/bin/postgres &> /dev/null; then
     print_message "Installing PostgreSQL..."
     arch -x86_64 $INTEL_BREW_PATH install postgresql
 else
@@ -116,7 +115,7 @@ else
 fi
 
 # Start PostgreSQL if not running
-if ! $INTEL_BREW_PREFIX/bin/pg_isready &> /dev/null; then
+if ! $BREW_PREFIX/bin/pg_isready &> /dev/null; then
     print_message "Starting PostgreSQL..."
     arch -x86_64 $INTEL_BREW_PATH services start postgresql
     sleep 5  # Wait for PostgreSQL to start
@@ -125,25 +124,25 @@ else
 fi
 
 # Create postgres user if it doesn't exist
-if ! $INTEL_BREW_PREFIX/bin/psql -U postgres -c "SELECT 1" &> /dev/null; then
+if ! $BREW_PREFIX/bin/psql -U postgres -c "SELECT 1" &> /dev/null; then
     print_message "Creating postgres user..."
-    $INTEL_BREW_PREFIX/bin/createuser -s postgres
+    $BREW_PREFIX/bin/createuser -s postgres
 else
     print_message "postgres user already exists"
 fi
 
 # Create database if it doesn't exist
 print_message "Setting up database..."
-if ! $INTEL_BREW_PREFIX/bin/psql -U postgres -lqt | cut -d \| -f 1 | grep -qw spotdraft-django-rest-api; then
+if ! $BREW_PREFIX/bin/psql -U postgres -lqt | cut -d \| -f 1 | grep -qw spotdraft-django-rest-api; then
     print_message "Creating spotdraft-django-rest-api database..."
-    $INTEL_BREW_PREFIX/bin/createdb -U postgres spotdraft-django-rest-api
+    $BREW_PREFIX/bin/createdb -U postgres spotdraft-django-rest-api
 else
     print_message "spotdraft-django-rest-api database already exists"
 fi
 
 # Redis setup using Intel Homebrew
 print_message "Setting up Redis..."
-if ! command -v $INTEL_BREW_PREFIX/bin/redis-cli &> /dev/null; then
+if ! command -v $BREW_PREFIX/bin/redis-cli &> /dev/null; then
     print_message "Installing Redis..."
     arch -x86_64 $INTEL_BREW_PATH install redis
 else
@@ -151,7 +150,7 @@ else
 fi
 
 # Start Redis if not running
-if ! arch -x86_64 $INTEL_BREW_PREFIX/bin/redis-cli ping &> /dev/null; then
+if ! arch -x86_64 $BREW_PREFIX/bin/redis-cli ping &> /dev/null; then
     print_message "Starting Redis..."
     arch -x86_64 $INTEL_BREW_PATH services start redis
     sleep 2  # Wait for Redis to start
@@ -210,6 +209,9 @@ export PATH="$BREW_PREFIX/opt/zlib/bin:$PATH"
 export PATH="$BREW_PREFIX/opt/tcl-tk/bin:$PATH"
 export PATH="$BREW_PREFIX/opt/libxmlsec1/bin:$PATH"
 
+export PATH="$HOME/.local/bin:$PATH"
+
+
 print_message "Environment variables set up completed"
 
 # Python environment setup
@@ -218,11 +220,11 @@ print_message "Setting up Python environment..."
 
 
 # Check if Intel pyenv is installed
-if command -v $INTEL_BREW_PREFIX/bin/pyenv &> /dev/null; then
+if command -v $BREW_PREFIX/bin/pyenv &> /dev/null; then
     print_message "Intel pyenv is already installed, checking Python versions..."
     
     # Store existing Python versions
-    EXISTING_VERSIONS=$($INTEL_BREW_PREFIX/bin/pyenv versions --bare)
+    EXISTING_VERSIONS=$($BREW_PREFIX/bin/pyenv versions --bare)
     
     # Check if .python-version exists and get required version
     if [ -f .python-version ]; then
@@ -230,14 +232,14 @@ if command -v $INTEL_BREW_PREFIX/bin/pyenv &> /dev/null; then
         print_message "Required Python version: $REQUIRED_VERSION"
         
         # Check if required version is installed and its architecture
-        if $INTEL_BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
+        if $BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
             if ! command -v python &> /dev/null; then
                 print_message "Python is not installed. Installing Python version $REQUIRED_VERSION..."
                 #  uninstall required version first for deleting existing installation only if its exist in the system 
-                if $INTEL_BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
-                    $INTEL_BREW_PREFIX/bin/pyenv uninstall -f $REQUIRED_VERSION
+                if $BREW_PREFIX/bin/pyenv versions | grep -q "$REQUIRED_VERSION"; then
+                    $BREW_PREFIX/bin/pyenv uninstall -f $REQUIRED_VERSION
                 fi
-                $INTEL_BREW_PREFIX/bin/pyenv install $REQUIRED_VERSION
+                $BREW_PREFIX/bin/pyenv install $REQUIRED_VERSION
                 if [ $? -ne 0 ]; then
                     print_error "Failed to install Python $REQUIRED_VERSION"
                     exit 1
