@@ -38,6 +38,23 @@ else
     print_message "Rosetta is already installed"
 fi
 
+# Check for Xcode Command Line Tools
+if ! xcode-select -p &> /dev/null; then
+    print_error "Xcode Command Line Tools are not installed. Please install them by running: xcode-select --install"
+    exit 1
+else
+    print_message "Xcode Command Line Tools are installed."
+fi
+
+if [[ "$(xcode-select -p)" == "/Applications/Xcode.app/Contents/Developer" ]]; then
+    print_message "Xcode is installed"
+else
+    print_error "Xcode is not installed"
+    print_error "First step is to install Xcode from the App Store"
+    exit 1
+fi
+
+
 # Check if running on macOS
 if [[ "$(uname -m)" != "x86_64" ]]; then
     print_error "This script is designed for Intel only"
@@ -105,8 +122,60 @@ setup_pyenv() {
 
 setup_pyenv
 
+check_and_update_postgres_memory() {
+    print_message "Checking PostgreSQL shared memory settings..."
+    
+    # Get current shared memory settings
+    CURRENT_SHMMAX=$(sysctl -n kern.sysv.shmmax)
+    CURRENT_SHMALL=$(sysctl -n kern.sysv.shmall)
+    
+    # Define recommended values (in bytes)
+    RECOMMENDED_SHMMAX=$((1 * 1024 * 1024 * 1024))  # 1GB
+    RECOMMENDED_SHMALL=262144  # Current system value for 1GB
+    
+    # Check if current values are sufficient
+    if [ "$CURRENT_SHMMAX" -lt "$RECOMMENDED_SHMMAX" ] || [ "$CURRENT_SHMALL" -lt "$RECOMMENDED_SHMALL" ]; then
+        print_message "Current shared memory settings:"
+        print_message "shmmax: $CURRENT_SHMMAX bytes"
+        print_message "shmall: $CURRENT_SHMALL pages"
+        
+        print_message "\nRecommended shared memory settings:"
+        print_message "shmmax: $RECOMMENDED_SHMMAX bytes"
+        print_message "shmall: $RECOMMENDED_SHMALL pages"
+        
+        printf "Do you want to update the shared memory settings? (y/n): "
+        read response
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            print_message "Updating shared memory settings..."
+            sudo sysctl -w kern.sysv.shmmax=$RECOMMENDED_SHMMAX
+            sudo sysctl -w kern.sysv.shmall=$RECOMMENDED_SHMALL
+            
+            # Make changes permanent
+            if [ ! -f "/etc/sysctl.conf" ]; then
+                sudo touch "/etc/sysctl.conf"
+            fi
+            
+            # Add settings to sysctl.conf if they don't exist
+            if ! grep -q "kern.sysv.shmmax" "/etc/sysctl.conf"; then
+                echo "kern.sysv.shmmax=$RECOMMENDED_SHMMAX" | sudo tee -a "/etc/sysctl.conf"
+            fi
+            if ! grep -q "kern.sysv.shmall" "/etc/sysctl.conf"; then
+                echo "kern.sysv.shmall=$RECOMMENDED_SHMALL" | sudo tee -a "/etc/sysctl.conf"
+            fi
+            
+            print_message "Shared memory settings updated successfully"
+        else
+            print_message "Skipping shared memory update"
+        fi
+    else
+        print_message "Shared memory settings are sufficient"
+    fi
+}
+
 # PostgreSQL setup using Intel Homebrew
 print_message "Setting up PostgreSQL..."
+check_and_update_postgres_memory
+
 if ! command -v $BREW_PREFIX/bin/postgres &> /dev/null; then
     print_message "Installing PostgreSQL..."
     arch -x86_64 $INTEL_BREW_PATH install postgresql
