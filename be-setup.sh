@@ -25,7 +25,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Check and install Rosetta if needed
-if ! /usr/sbin/softwareupdate --list-rosetta &> /dev/null; then
+if ! arch -x86_64 /usr/bin/true &> /dev/null; then
     print_message "Rosetta is not installed. Installing Rosetta..."
     print_message "You may be prompted for your password to install Rosetta..."
     if /usr/sbin/softwareupdate --install-rosetta --agree-to-license; then
@@ -72,7 +72,7 @@ eval "$(arch -x86_64 $INTEL_BREW_PATH shellenv)"
 
 # Install required packages using Intel Homebrew
 print_message "Installing required packages using Intel Homebrew..."
-HOMEBREW_NO_INSTALL_UPGRADE=1 arch -x86_64 $INTEL_BREW_PATH install openssl readline sqlite3 xz zlib postgresql redis libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
+HOMEBREW_NO_INSTALL_UPGRADE=1 arch -x86_64 $INTEL_BREW_PATH install openssl readline sqlite3 xz zlib libxml2 libxslt libxmlsec1 poppler swig pyenv pre-commit tcl-tk@8 libb2
 
 setup_pyenv() {
     export PYENV_ROOT="$HOME/.pyenv"
@@ -383,12 +383,11 @@ else
     print_message "Installing Poetry..."
     install_poetry
 fi
+export PATH="$HOME/.local/bin:$PATH"
 
 if [ -d "env" ]; then
     rm -rf env
 fi
-
-echo "python arch: $(arch -x86_64 python -c "import platform; print(platform.machine())")"
 
 arch -x86_64 python -m venv env
 
